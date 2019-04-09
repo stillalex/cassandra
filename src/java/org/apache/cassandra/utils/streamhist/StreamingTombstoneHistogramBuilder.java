@@ -76,6 +76,7 @@ public class StreamingTombstoneHistogramBuilder
         this.bin = new DataHolder(maxBinSize + 1, roundSeconds);
         distances = new DistanceHolder(maxBinSize);
 
+        // TODO why not move pow inside the Spool constructor
         //for spool we need power-of-two cells
         maxSpoolSize = maxSpoolSize == 0 ? 0 : IntMath.pow(2, IntMath.log2(maxSpoolSize, RoundingMode.CEILING));
         spool = new Spool(maxSpoolSize);
@@ -327,6 +328,15 @@ public class StreamingTombstoneHistogramBuilder
 
             //let's evaluate in long values to handle overflow in multiplication
             int newPoint = (int) (((long) point1 * value1 + (long) point2 * value2) / (value1 + value2));
+
+            if (newPoint < 0) {
+                // TODO int overflow
+                System.err.println("p1: " + point1 + ", v1: " + value1);
+                System.err.println("p2: " + point2 + ", v2: " + value2);
+                System.err.println(" => " + newPoint);
+                throw new RuntimeException("int overflow");
+            }
+
             newPoint = roundKey(newPoint, roundSeconds);
             data[index] = wrap(newPoint, sum);
 
@@ -567,6 +577,7 @@ public class StreamingTombstoneHistogramBuilder
 
         <E extends Exception> void forEach(HistogramDataConsumer<E> consumer) throws E
         {
+            // TODO if (size==0) return, can also count processed items
             for (int i = 0; i < map.length; i += 2)
             {
                 if (map[i] != -1)

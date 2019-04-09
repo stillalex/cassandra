@@ -17,18 +17,23 @@
  */
 package org.apache.cassandra.utils.streamhist;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import org.junit.Test;
-
 import org.apache.cassandra.io.util.DataInputBuffer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
+import org.junit.Test;
+import org.quicktheories.core.Gen;
 
 import static org.junit.Assert.assertEquals;
+import static org.quicktheories.QuickTheory.qt;
+import static org.quicktheories.generators.SourceDSL.integers;
+import static org.quicktheories.generators.SourceDSL.lists;
 
 public class StreamingTombstoneHistogramBuilderTest
 {
@@ -172,5 +177,56 @@ public class StreamingTombstoneHistogramBuilderTest
         Map<Integer, Integer> result = new HashMap<>();
         histogram.forEach(result::put);
         return result;
+    }
+
+    @Test
+    public void testQT() throws Exception {
+        qt().forAll(
+                genStreamingTombstoneHistogramBuilder(),
+                lists().of(integers().allPositive()).ofSize(100),
+                lists().of(integers().allPositive()).ofSize(100))
+        .checkAssert(this::addAndVerify);
+    }
+
+    @Test
+    public void testQTFail1() throws Exception {
+        StreamingTombstoneHistogramBuilder b = new StreamingTombstoneHistogramBuilder(1, 5, 60);
+
+        List<Integer> keys = Arrays.asList(
+             1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                 1, 244, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 182, 1, 1, 1, 1, 304, 1, 1, 1, 1, 1, 1,
+                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 485, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                 1, 1, 1, 1, 363, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 425, 127, 1, 1,
+                 61, 1, 61
+                );
+        List<Integer> values = Arrays.asList(
+                19, 3639, 861681, 34622, 161984, 44342048, 69, 75324, 222811048,
+                  3312861, 3955, 50556, 422, 31596, 1, 1624019, 16576, 2806, 721, 509687, 584,
+                  411819, 3320, 20924839, 3377, 5, 12, 491, 3408, 175187264, 1, 436652529,
+                  67400974, 51586, 1, 10969, 13, 46758, 8910928, 7468, 391179, 1665445,
+                  1100393, 87976, 13100, 14070, 2212, 4420225, 5597, 5, 196457, 995042260,
+                  5662902, 225536, 17, 1554, 1, 29352461, 137820, 1, 183, 17840, 7791288,
+                  1701086, 52281081, 173, 298, 377268, 3165, 2982, 29166574, 2439726, 5680,
+                  569721, 1794, 7118, 3862461, 5, 132403, 1, 1652191, 71434, 14441758, 4698, 5,
+                  867, 37, 3, 1, 30, 65904, 108374, 21621, 9747486, 1202, 4643, 954632, 264461,
+                  1, 4263
+                );
+
+        addAndVerify(b, keys, values);
+    }
+
+    private void addAndVerify(StreamingTombstoneHistogramBuilder b, List<Integer> keys, List<Integer> values) {
+        for (int i = 0; i < keys.size(); i++) {
+            b.update(keys.get(i), values.get(i));
+        }
+        TombstoneHistogram hist = b.build();
+        Map<Integer, Integer> map = asMap(hist);
+        System.err.println(map);
+    }
+
+    private static Gen<StreamingTombstoneHistogramBuilder> genStreamingTombstoneHistogramBuilder() {
+        Gen<Integer> bs = integers().from(1).upTo(1000);
+        Gen<Integer> ss = integers().from(1).upTo(300000);
+        return bs.zip(ss, (b, s) -> new StreamingTombstoneHistogramBuilder(b, s, 60));
     }
 }
