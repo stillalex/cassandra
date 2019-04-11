@@ -22,6 +22,8 @@ import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+import org.apache.cassandra.db.rows.Cell;
+
 import com.google.common.math.IntMath;
 
 import static org.apache.cassandra.utils.streamhist.StreamingTombstoneHistogramBuilder.AddResult.ACCUMULATED;
@@ -292,12 +294,19 @@ public class StreamingTombstoneHistogramBuilder
                 }
                 else
                 {
-                    data[index] += delta;
+                    long v = (long) unwrapValue(data[index]) + delta;
+                    if (v > Integer.MAX_VALUE) {
+                        // TODO overflow on delta (1)
+                        System.err.println("oveflow on delta (1)");
+                        v = Integer.MAX_VALUE;
+                    }
+                    data[index] = wrap(point, (int) v);
                     addResult = ACCUMULATED;
                 }
             }
             else
             {
+                //TODO overflow possible but not seen in test
                 data[index] += delta;
                 addResult = ACCUMULATED;
             }
@@ -319,26 +328,29 @@ public class StreamingTombstoneHistogramBuilder
             final int prevPoint = getPrevPoint(index);
             final int nextPoint = getNextPoint(index + 1);
 
-            int value1 = unwrapValue(data[index]);
-            int value2 = unwrapValue(data[index + 1]);
+            long value1 = unwrapValue(data[index]);
+            long value2 = unwrapValue(data[index + 1]);
 
             assert (unwrapPoint(data[index + 1]) == point2) : "point2 should follow point1";
 
-            int sum = value1 + value2;
+            long sum = value1 + value2;
 
             //let's evaluate in long values to handle overflow in multiplication
-            int newPoint = (int) (((long) point1 * value1 + (long) point2 * value2) / (value1 + value2));
+            long newPointL = (point1 * value1 + point2 * value2) / sum;
 
-            if (newPoint < 0) {
-                // TODO int overflow
-                System.err.println("p1: " + point1 + ", v1: " + value1);
-                System.err.println("p2: " + point2 + ", v2: " + value2);
-                System.err.println(" => " + newPoint);
-                throw new RuntimeException("int overflow");
+            if (sum > Integer.MAX_VALUE) {
+                // TODO overflow on sum
+                System.err.println("overflow on sum");
+                sum = Integer.MAX_VALUE;
+            }
+            if (newPointL > Integer.MAX_VALUE) {
+                // TODO possible int overflow, was not hit in the qt tests
+                throw new RuntimeException("int overflow on newPoint");
             }
 
+            int newPoint = (int) newPointL;
             newPoint = roundKey(newPoint, roundSeconds);
-            data[index] = wrap(newPoint, sum);
+            data[index] = wrap(newPoint, (int) sum);
 
             System.arraycopy(data, index + 2, data, index + 1, data.length - index - 2);
             data[data.length - 1] = EMPTY;
@@ -416,6 +428,7 @@ public class StreamingTombstoneHistogramBuilder
 
         public int size()
         {
+            // TODO don't need to unwrap, just traverse 'data' like above
             int[] accumulator = new int[1];
             forEach((point, value) -> accumulator[0]++);
             return accumulator[0];
@@ -577,7 +590,7 @@ public class StreamingTombstoneHistogramBuilder
 
         <E extends Exception> void forEach(HistogramDataConsumer<E> consumer) throws E
         {
-            // TODO if (size==0) return, can also count processed items
+            // TODO if (size==0) return, can also count processed items and return early
             for (int i = 0; i < map.length; i += 2)
             {
                 if (map[i] != -1)
@@ -600,6 +613,11 @@ public class StreamingTombstoneHistogramBuilder
             if (map[cell] == point)
             {
                 map[cell + 1] += delta;
+                if (map[cell + 1] < 0) {
+                    // TODO overflow on tryCell sum
+                    System.err.println("overflow on tryCell sum");
+                    map[cell + 1] = Integer.MAX_VALUE;
+                }
                 return true;
             }
             return false;
@@ -608,10 +626,21 @@ public class StreamingTombstoneHistogramBuilder
 
     private static int roundKey(int p, int roundSeconds)
     {
+        // see CASSANDRA-14773
         int d = p % roundSeconds;
-        if (d > 0)
-            return p + (roundSeconds - d);
-        else
+        if (d == 0)
             return p;
+
+        p += roundSeconds - d;
+        if (p > Cell.MAX_DELETION_TIME)
+            return Cell.MAX_DELETION_TIME;
+
+        if (p < 0)
+        {
+            // TODO overflow on roundKey
+            System.err.println("overflow on roundKey");
+            return Cell.MAX_DELETION_TIME;
+        }
+        return p;
     }
 }
