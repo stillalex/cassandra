@@ -44,8 +44,16 @@ public class ActiveCompactions implements ActiveCompactionsTracker
     public void finishCompaction(CompactionInfo.Holder ci)
     {
         compactions.remove(ci);
-        CompactionManager.instance.getMetrics().bytesCompacted.inc(ci.getCompactionInfo().getTotal());
-        CompactionManager.instance.getMetrics().totalCompactionsCompleted.mark();
+        if(ci.isStopRequested())
+        {
+            CompactionManager.instance.getMetrics().bytesCompactedInterrupted.inc(ci.getCompactionInfo().getTotal());
+            CompactionManager.instance.getMetrics().totalCompactionsInterrupted.mark();
+        }
+        else
+        {
+            CompactionManager.instance.getMetrics().bytesCompacted.inc(ci.getCompactionInfo().getTotal());
+            CompactionManager.instance.getMetrics().totalCompactionsCompleted.mark();
+        }
     }
 
     /**

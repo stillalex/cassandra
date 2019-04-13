@@ -26,10 +26,8 @@ import com.codahale.metrics.Meter;
 
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Keyspace;
-import org.apache.cassandra.db.compaction.ActiveCompactions;
 import org.apache.cassandra.db.compaction.CompactionInfo;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.schema.Schema;
 import org.apache.cassandra.schema.TableMetadata;
 
@@ -53,7 +51,10 @@ public class CompactionMetrics
     public final Meter totalCompactionsCompleted;
     /** Total number of bytes compacted since server [re]start */
     public final Counter bytesCompacted;
-
+    /** Total number of interrupted compactions since server [re]start */
+    public final Meter totalCompactionsInterrupted;
+    /** Total number of bytes compacted by interrupted compactions since server [re]start */
+    public final Counter bytesCompactedInterrupted;
 
     /** Total number of compactions that have had sstables drop out of them */
     public final Counter compactionsReduced;
@@ -146,6 +147,8 @@ public class CompactionMetrics
         });
         totalCompactionsCompleted = Metrics.meter(factory.createMetricName("TotalCompactionsCompleted"));
         bytesCompacted = Metrics.counter(factory.createMetricName("BytesCompacted"));
+        totalCompactionsInterrupted = Metrics.meter(factory.createMetricName("TotalCompactionsInterrupted"));
+        bytesCompactedInterrupted = Metrics.counter(factory.createMetricName("BytesCompactedInterrupted"));
 
         // compaction failure metrics
         compactionsReduced = Metrics.counter(factory.createMetricName("CompactionsReduced"));

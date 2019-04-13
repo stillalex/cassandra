@@ -1931,6 +1931,16 @@ public class CompactionManager implements CompactionManagerMBean
         return metrics.totalCompactionsCompleted.getCount();
     }
 
+    public long getTotalBytesCompactedInterrupted()
+    {
+        return metrics.bytesCompactedInterrupted.getCount();
+    }
+
+    public long getTotalCompactionsInterrupted()
+    {
+        return metrics.totalCompactionsInterrupted.getCount();
+    }
+
     public int getPendingTasks()
     {
         return metrics.pendingTasks.getValue();
